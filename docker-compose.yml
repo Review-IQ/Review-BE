@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # SQL Server Database
+  database:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: reviewhub-db
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=${DB_SA_PASSWORD}
+      - MSSQL_PID=Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - reviewhub-db-data:/var/opt/mssql
+    networks:
+      - reviewhub-network
+    healthcheck:
+      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P ${DB_SA_PASSWORD} -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # .NET API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: reviewhub-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:80
+      - DATABASE_CONNECTION_STRING=Server=database;Database=ReviewHubDb;User Id=sa;Password=${DB_SA_PASSWORD};TrustServerCertificate=True;
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
+      - AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
+      - AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
+      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
+      - MAILGUN_DOMAIN=${MAILGUN_DOMAIN}
+      - MAILGUN_FROM_EMAIL=${MAILGUN_FROM_EMAIL}
+      - APP_URL=${APP_URL}
+      - API_URL=${API_URL}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - YELP_API_KEY=${YELP_API_KEY}
+      - FACEBOOK_APP_ID=${FACEBOOK_APP_ID}
+      - FACEBOOK_APP_SECRET=${FACEBOOK_APP_SECRET}
+    ports:
+      - "5000:80"
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - reviewhub-network
+    restart: unless-stopped
+
+  # React Client
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+      args:
+        - VITE_API_URL=${API_URL}
+        - VITE_AUTH0_DOMAIN=${AUTH0_DOMAIN}
+        - VITE_AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
+        - VITE_AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
+    container_name: reviewhub-client
+    ports:
+      - "3000:80"
+    networks:
+      - reviewhub-network
+    restart: unless-stopped
+
+networks:
+  reviewhub-network:
+    driver: bridge
+
+volumes:
+  reviewhub-db-data:
